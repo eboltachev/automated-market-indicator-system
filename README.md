@@ -1,0 +1,1 @@
+# automated-market-indicator-system
