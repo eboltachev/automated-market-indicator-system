@@ -1,7 +1,7 @@
 FROM node:lts-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci || npm install
+RUN npm ci --include=dev || npm install --include=dev
 COPY . .
 RUN npm run build
 FROM nginx:alpine
