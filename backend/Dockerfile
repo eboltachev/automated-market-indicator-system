@@ -1,9 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN apt update && apt install -y --no-install-recommends \
-    ffmpeg && \ 
-    apt install -y curl vim libgl1 && \
+RUN apt update && apt install -y --no-install-recommends && \
     pip install --upgrade pip && \
     pip install uv
 ENV UV_COMPILE_BYTECODE=1 \
