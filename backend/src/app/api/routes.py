@@ -16,6 +16,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get('/api/assets')
+async def assets(request: Request) -> dict[str, list[str]]:
+    forecaster = request.app.state.forecaster
+    return {"assets": await forecaster.available_assets()}
+
+
 @router.post('/api/predict')
 async def predict(payload: PredictRequest, request: Request):
     forecaster = request.app.state.forecaster

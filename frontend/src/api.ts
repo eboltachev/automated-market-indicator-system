@@ -1,4 +1,4 @@
-import type { Result } from './types';
+import type { AssetsResponse, Result } from './types';
 
 const rawBase = import.meta.env.VITE_API_BASE_URL ?? '';
 const base = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase;
@@ -42,4 +42,8 @@ export async function updateData() {
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
   });
+}
+
+export async function getAssets(): Promise<AssetsResponse> {
+  return requestJson<AssetsResponse>(`${base}/api/assets`);
 }

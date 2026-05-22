@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { predict, predictFile, updateData } from './api';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { getAssets, predict, predictFile, updateData } from './api';
 import type { ForecastPoint, HistoryPoint, Result } from './types';
 
 type NewsRow = {
@@ -209,7 +209,9 @@ function PriceIndexChart({ asset, history, forecast, meta }: ChartProps) {
 }
 
 export default function App() {
-  const [asset, setAsset] = useState(import.meta.env.VITE_DEFAULT_ASSET || 'LKOH');
+  const configuredDefaultAsset = import.meta.env.VITE_DEFAULT_ASSET || '';
+  const [assets, setAssets] = useState<string[]>(configuredDefaultAsset ? [configuredDefaultAsset] : []);
+  const [asset, setAsset] = useState(configuredDefaultAsset);
   const [period, setPeriod] = useState(Number(import.meta.env.VITE_DEFAULT_PERIOD || 7));
   const [data, setData] = useState<Result | null>(null);
   const [rows, setRows] = useState<NewsRow[]>(initialRows);
@@ -220,7 +222,26 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
 
-  const canPredict = useMemo(() => asset.trim().length > 0 && period > 0, [asset, period]);
+  const canPredict = useMemo(() => assets.length > 0 && asset.trim().length > 0 && period > 0, [asset, assets, period]);
+
+  const loadAssets = useCallback(async () => {
+    const response = await getAssets();
+    const nextAssets = Array.from(new Set(response.assets.map((item) => item.trim()).filter(Boolean))).sort();
+    setAssets(nextAssets);
+    setAsset((currentAsset) => {
+      if (currentAsset && nextAssets.includes(currentAsset)) return currentAsset;
+      return nextAssets[0] ?? '';
+    });
+    if (!nextAssets.length) {
+      setStatus('Нет активов, загруженных при инициализации сервиса');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAssets().catch((error) => {
+      setStatus(error instanceof Error ? error.message : 'Не удалось загрузить список активов');
+    });
+  }, [loadAssets]);
 
   const setRow = (index: number, patch: Partial<NewsRow>) => {
     const nextRows = [...rows];
@@ -275,6 +296,7 @@ export default function App() {
     setStatus('');
     try {
       await updateData();
+      await loadAssets();
       setStatus('Данные обновлены');
     } catch (error) {
       showError(error);
@@ -286,7 +308,19 @@ export default function App() {
   return (
     <div className="page">
       <div className="top">
-        <input value={asset} onChange={(event) => setAsset(event.target.value)} placeholder="Тикер" />
+        <select
+          className="asset-select"
+          value={asset}
+          onChange={(event) => setAsset(event.target.value)}
+          disabled={!assets.length}
+          aria-label="Актив"
+        >
+          {assets.length ? (
+            assets.map((item) => <option key={item} value={item}>{item}</option>)
+          ) : (
+            <option value="">Нет загруженных активов</option>
+          )}
+        </select>
         <input
           type="number"
           min={1}
@@ -312,9 +346,27 @@ export default function App() {
         <div className="modal-backdrop">
           <div className="modal">
             <h2>Загрузка новостей из Excel</h2>
-            <input type="file" accept=".xls,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <label className="modal-field">
+              <span>Актив</span>
+              <select
+                value={asset}
+                onChange={(event) => setAsset(event.target.value)}
+                disabled={!assets.length}
+                aria-label="Актив для файла"
+              >
+                {assets.length ? (
+                  assets.map((item) => <option key={item} value={item}>{item}</option>)
+                ) : (
+                  <option value="">Нет загруженных активов</option>
+                )}
+              </select>
+            </label>
+            <label className="modal-field">
+              <span>Файл Excel</span>
+              <input type="file" accept=".xls,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            </label>
             <div className="modal-actions">
-              <button disabled={!file || loading} onClick={runFilePrediction}>Ок</button>
+              <button disabled={!file || !canPredict || loading} onClick={runFilePrediction}>Ок</button>
               <button onClick={() => setFileModal(false)}>Отмена</button>
             </div>
           </div>

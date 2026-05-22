@@ -106,6 +106,21 @@ class AsyncNewsPriceForecaster:
             logger.warning("Initial market data loading failed: %s", exc)
         return instance
 
+    async def available_assets(self) -> list[str]:
+        async with self._price_lock:
+            cached_assets = {
+                asset
+                for asset, frame in self._price_cache.items()
+                if frame is not None and not frame.empty
+            }
+        ordered_assets: list[str] = []
+        for asset in self.config.default_assets:
+            normalized_asset = self._normalize_asset(asset)
+            if normalized_asset in cached_assets and normalized_asset not in ordered_assets:
+                ordered_assets.append(normalized_asset)
+        ordered_assets.extend(sorted(cached_assets - set(ordered_assets)))
+        return ordered_assets
+
     async def update(
         self,
         assets: tuple[str, ...] | list[str] | str | None = None,

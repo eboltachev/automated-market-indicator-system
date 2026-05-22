@@ -7,6 +7,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -25,6 +26,7 @@ button:disabled {
 }
 
 input,
+select,
 textarea {
   border: 1px solid #c7ccd8;
   border-radius: 8px;
@@ -47,6 +49,10 @@ textarea {
 .status {
   margin-left: 8px;
   color: #5b6475;
+}
+
+.asset-select {
+  min-width: 160px;
 }
 
 .placeholder,
@@ -201,6 +207,18 @@ textarea {
 
 .modal h2 {
   margin: 0 0 16px;
+}
+
+.modal-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.modal-field span {
+  color: #344054;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .modal-actions {

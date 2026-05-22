@@ -23,3 +23,7 @@ export type Result = {
   forecast: ForecastPoint[];
   meta?: ResultMeta;
 };
+
+export type AssetsResponse = {
+  assets: string[];
+};
