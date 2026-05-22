@@ -2,8 +2,6 @@ services:
   backend:
     build: ./backend
     env_file: .env
-    ports:
-      - "8000:8000"
     volumes:
       - ./models/model_rubert-tiny1.pt:/models/model_rubert-tiny1.pt:ro
     healthcheck:
@@ -16,7 +14,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:80"
+      - "5004:80"
     depends_on:
       backend:
         condition: service_healthy

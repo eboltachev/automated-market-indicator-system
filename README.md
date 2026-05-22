@@ -18,7 +18,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Frontend: http://localhost:3000
+Frontend: http://localhost:5004
 
 ## Примеры curl
 ```bash

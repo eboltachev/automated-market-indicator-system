@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "news-price-forecaster"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    backend_cors_origins: str = "http://localhost:3000,http://frontend"
+    backend_cors_origins: str = "http://localhost:5004,http://frontend"
     model_name: str = "cointegrated/rubert-tiny"
     model_checkpoint_path: str = "/models/model_rubert-tiny1.pt"
     model_local_files_only: bool = False
