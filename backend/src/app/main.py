@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
         max_daily_signal_impact=settings.max_daily_signal_impact,
         http_timeout=settings.http_timeout,
     )
-    app.state.forecaster = await AsyncNewsPriceForecaster.create(config=config, assets=settings.assets)
+    app.state.forecaster = AsyncNewsPriceForecaster(config=config)
     yield
 
 
