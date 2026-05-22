@@ -77,12 +77,7 @@ class AsyncNewsPriceForecaster:
     async def _load_model(self): self.tokenizer, self.model = await asyncio.to_thread(self._load_model_sync)
     def _load_model_sync(self):
         tok=BertTokenizerFast.from_pretrained(self.config.model_name,local_files_only=self.config.local_files_only); model=BertForSequenceClassification.from_pretrained(self.config.model_name,num_labels=3,local_files_only=self.config.local_files_only); cp=Path(self.config.checkpoint_path) if self.config.checkpoint_path else None
-        if cp and cp.is_file():
-            model.load_state_dict(torch.load(cp, map_location=self.device))
-        elif cp and cp.exists():
-            logger.warning("MODEL_CHECKPOINT_PATH exists but is not a file: %s. Base model will be used.", cp)
-        else:
-            logger.warning("MODEL_CHECKPOINT_PATH was not found: %s. Base model will be used.", cp)
+        if cp and cp.exists(): model.load_state_dict(torch.load(cp,map_location=self.device))
         model.to(self.device); model.eval(); return tok,model
     async def _classify_news(self,news):
         if not news: return pd.DataFrame(columns=["date","text","prediction"])

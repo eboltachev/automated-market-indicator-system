@@ -18,17 +18,17 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Frontend: http://localhost:5004
+Frontend: http://localhost:3000
 
 ## Примеры curl
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:8000/health
 ```
 ```bash
-curl -X POST http://localhost:5000/api/predict -H 'Content-Type: application/json' -d '{"asset":"LKOH","period":7,"news":[{"date":"2026-04-29","text":"текст новости"}]}'
+curl -X POST http://localhost:8000/api/predict -H 'Content-Type: application/json' -d '{"asset":"LKOH","period":7,"news":[{"date":"2026-04-29","text":"текст новости"}]}'
 ```
 ```bash
-curl -X POST http://localhost:5000/api/update -H 'Content-Type: application/json' -d '{"assets":["LKOH","IMOEX","BZ=F"]}'
+curl -X POST http://localhost:8000/api/update -H 'Content-Type: application/json' -d '{"assets":["LKOH","IMOEX","BZ=F"]}'
 ```
 
 ## Excel формат
