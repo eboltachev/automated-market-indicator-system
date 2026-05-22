@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     ridge_alpha: float = 0.0001
     max_daily_signal_impact: float = 0.03
     http_timeout: float = 20
+    moex_base_url: str = "https://iss.moex.com/iss"
 
     @property
     def cors_origins(self) -> list[str]:

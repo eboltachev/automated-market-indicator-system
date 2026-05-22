@@ -5,6 +5,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from app.core.settings import settings
 from app.schemas.prediction import PredictRequest, UpdateRequest
 from app.services.excel_parser import parse_news_excel
+from app.services.forecaster import MarketDataUnavailableError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -18,7 +19,16 @@ async def health() -> dict[str, str]:
 @router.post('/api/predict')
 async def predict(payload: PredictRequest, request: Request):
     forecaster = request.app.state.forecaster
-    return await forecaster.predict(payload.model_dump(mode='json'))
+    try:
+        return await forecaster.predict(payload.model_dump(mode='json'))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except MarketDataUnavailableError as exc:
+        logger.warning('Market data unavailable: %s', exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Predict failed')
+        raise HTTPException(status_code=500, detail="Произошла ошибка. Попробуйте позже.") from exc
 
 
 @router.post('/api/predict/file')
@@ -33,8 +43,18 @@ async def predict_file(request: Request, file: UploadFile = File(...), asset: st
     except Exception as exc:
         logger.exception('Excel parse failed')
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     forecaster = request.app.state.forecaster
-    return await forecaster.predict({"asset": asset, "period": period, "news": news})
+    try:
+        return await forecaster.predict({"asset": asset, "period": period, "news": news})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except MarketDataUnavailableError as exc:
+        logger.warning('Market data unavailable: %s', exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Predict from file failed')
+        raise HTTPException(status_code=500, detail="Произошла ошибка. Попробуйте позже.") from exc
 
 
 @router.post('/api/update')
@@ -44,6 +64,9 @@ async def update(payload: UpdateRequest, request: Request):
     try:
         loaded = await forecaster.update(assets=assets)
         return {"status": "ok", "loaded": loaded}
-    except Exception:
+    except MarketDataUnavailableError as exc:
+        logger.warning('Update failed: %s', exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
         logger.exception('Update failed')
-        raise HTTPException(status_code=500, detail="Произошла ошибка. Попробуйте позже.")
+        raise HTTPException(status_code=500, detail="Произошла ошибка. Попробуйте позже.") from exc

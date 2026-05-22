@@ -16,7 +16,9 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "5004:80"
+      - "5004:5004"
+    environment:
+      BACKEND_URL: http://backend:5000
     depends_on:
       backend:
         condition: service_healthy

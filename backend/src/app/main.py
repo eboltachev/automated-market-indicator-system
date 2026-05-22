@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
         ridge_alpha=settings.ridge_alpha,
         max_daily_signal_impact=settings.max_daily_signal_impact,
         http_timeout=settings.http_timeout,
+        moex_base_url=settings.moex_base_url,
     )
     app.state.forecaster = await AsyncNewsPriceForecaster.create(config=config, assets=settings.assets)
     yield
