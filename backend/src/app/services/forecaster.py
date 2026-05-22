@@ -124,6 +124,8 @@ class AsyncNewsPriceForecaster:
             if start
             else end_date - timedelta(days=self.config.history_days)
         )
+        if start_date >= end_date:
+            end_date = start_date + timedelta(days=1)
         normalized_assets = tuple(self._normalize_asset(asset) for asset in assets_tuple)
         tasks = [
             self._load_market_history(asset, start_date, end_date)
@@ -140,6 +142,9 @@ class AsyncNewsPriceForecaster:
                 if result.empty:
                     errors[asset] = "empty market dataframe"
                     continue
+                existing = self._price_cache.get(asset)
+                if existing is not None and not existing.empty:
+                    result = self._merge_market_history(existing, result)
                 self._price_cache[asset] = result
                 loaded[asset] = int(len(result))
         if errors and not loaded:
@@ -156,13 +161,16 @@ class AsyncNewsPriceForecaster:
             raise ValueError("period должен быть положительным числом дней")
         if not isinstance(news, list):
             raise ValueError("news должен быть списком словарей")
-        await self._ensure_asset_loaded(asset, news)
+
+        news_bounds = self._news_date_bounds(news)
+        await self._ensure_asset_loaded(asset, news_bounds)
         async with self._price_lock:
             market_df = self._price_cache[asset].copy()
         if market_df.empty:
             raise MarketDataUnavailableError(f"Нет рыночных данных для asset={asset}")
+
         news_df = await self._classify_news(news)
-        history_df = self._select_history(market_df, news_df)
+        history_df = self._select_history(market_df, news_df, news_bounds=news_bounds)
         if history_df.empty:
             raise MarketDataUnavailableError(f"Нет исторических цен для asset={asset}")
         aligned_news = self._align_news_to_market_dates(news_df, history_df.index)
@@ -251,30 +259,52 @@ class AsyncNewsPriceForecaster:
         stems = [self._stemmer.stem(token) for token in tokens]
         return " ".join(stems)
 
-    async def _ensure_asset_loaded(self, asset: str, news: list[dict[str, Any]]) -> None:
+    def _news_date_bounds(self, news: list[dict[str, Any]]) -> tuple[date, date] | None:
+        news_dates: list[date] = []
+        for item in news:
+            if item.get("date") is None:
+                continue
+            news_dates.append(pd.to_datetime(item["date"]).date())
+        if not news_dates:
+            return None
+        return min(news_dates), max(news_dates)
+
+    def _required_market_range(self, news_bounds: tuple[date, date] | None) -> tuple[date, date] | None:
+        if news_bounds is None:
+            return None
+        min_news_date, max_news_date = news_bounds
+        start = min_news_date - timedelta(days=self.config.index_window + 3)
+        # yfinance treats `end` as exclusive; MOEX tolerates the extra day as well.
+        end = max_news_date + timedelta(days=1)
+        return start, end
+
+    async def _ensure_asset_loaded(
+        self,
+        asset: str,
+        news_bounds: tuple[date, date] | None,
+    ) -> None:
+        required_range = self._required_market_range(news_bounds)
         async with self._price_lock:
             cached = self._price_cache.get(asset)
+
         if cached is None or cached.empty:
-            await self.update(assets=(asset,))
+            if required_range is None:
+                await self.update(assets=(asset,))
+            else:
+                await self.update(assets=(asset,), start=required_range[0], end=required_range[1])
             return
-        if not news:
+
+        if required_range is None:
             return
-        news_dates = [
-            pd.to_datetime(item["date"]).date()
-            for item in news
-            if item.get("date") is not None
-        ]
-        if not news_dates:
-            return
-        min_required = min(news_dates) - timedelta(days=self.config.index_window + 3)
-        max_required = max(news_dates) + timedelta(days=1)
-        cached_min = cached.index.min().date()
-        cached_max = cached.index.max().date()
-        if min_required < cached_min or max_required > cached_max:
+
+        min_required, end_required = required_range
+        cached_start = cached.index.min().date()
+        cached_end_exclusive = cached.index.max().date() + timedelta(days=1)
+        if min_required < cached_start or end_required > cached_end_exclusive:
             await self.update(
                 assets=(asset,),
-                start=min(min_required, cached_min),
-                end=max(max_required, date.today() + timedelta(days=1)),
+                start=min(min_required, cached_start),
+                end=max(end_required, cached_end_exclusive),
             )
 
     async def _load_market_history(
@@ -414,12 +444,25 @@ class AsyncNewsPriceForecaster:
         df["log_return"] = np.log(df["price"] / df["price"].shift(1))
         return df[["price", "log_return"]]
 
-    def _select_history(self, market_df: pd.DataFrame, news_df: pd.DataFrame) -> pd.DataFrame:
-        if not news_df.empty:
-            start = news_df["date"].min() - pd.Timedelta(days=self.config.index_window + 3)
-            history = market_df.loc[market_df.index >= start].copy()
-        else:
-            history = market_df.tail(min(len(market_df), 60)).copy()
+    def _select_history(
+        self,
+        market_df: pd.DataFrame,
+        news_df: pd.DataFrame,
+        news_bounds: tuple[date, date] | None = None,
+    ) -> pd.DataFrame:
+        if not news_df.empty or news_bounds is not None:
+            start_date, anchor_date = news_bounds or (
+                news_df["date"].min().date(),
+                news_df["date"].max().date(),
+            )
+            start = pd.Timestamp(start_date) - pd.Timedelta(days=self.config.index_window + 3)
+            end = pd.Timestamp(anchor_date).normalize()
+            history = market_df.loc[(market_df.index >= start) & (market_df.index <= end)].copy()
+            history = history.dropna(subset=["price"])
+            if not history.empty:
+                history = self._append_anchor_price_if_missing(history, end)
+            return history
+        history = market_df.tail(min(len(market_df), 60)).copy()
         return history.dropna(subset=["price"])
 
     def _align_news_to_market_dates(
@@ -581,6 +624,31 @@ class AsyncNewsPriceForecaster:
                 }
             )
         return rows
+
+    @staticmethod
+    def _merge_market_history(existing: pd.DataFrame, loaded: pd.DataFrame) -> pd.DataFrame:
+        merged = pd.concat([existing, loaded]).sort_index()
+        merged = merged[~merged.index.duplicated(keep="last")]
+        merged["price"] = pd.to_numeric(merged["price"], errors="coerce")
+        merged = merged.dropna(subset=["price"])
+        merged["log_return"] = np.log(merged["price"] / merged["price"].shift(1))
+        return merged[["price", "log_return"]]
+
+    @staticmethod
+    def _append_anchor_price_if_missing(history: pd.DataFrame, anchor: pd.Timestamp) -> pd.DataFrame:
+        anchor = pd.Timestamp(anchor).normalize()
+        last_date = pd.Timestamp(history.index.max()).normalize()
+        if last_date >= anchor:
+            return history.sort_index()
+        # Небольшой разрыв обычно означает выходной/праздник: фиксируем последнюю
+        # известную цену на дату последней новости, чтобы прогноз начинался строго от нее.
+        if (anchor.date() - last_date.date()).days > 10:
+            return history.sort_index()
+        history = history.copy()
+        history.loc[anchor, "price"] = float(history.loc[history.index.max(), "price"])
+        history = history.sort_index()
+        history["log_return"] = np.log(history["price"] / history["price"].shift(1))
+        return history[["price", "log_return"]]
 
     @staticmethod
     def _find_close_column(df: pd.DataFrame) -> str:

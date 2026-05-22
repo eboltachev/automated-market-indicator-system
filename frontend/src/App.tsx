@@ -19,12 +19,25 @@ function buildPolyline<T>(items: T[], x: (item: T) => number, y: (item: T) => nu
   return items.map((item) => `${x(item).toFixed(2)},${y(item).toFixed(2)}`).join(' ');
 }
 
+function buildLinearTicks(min: number, max: number, count: number): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || count <= 1) return [];
+  if (min === max) return [min];
+  return Array.from({ length: count }, (_, index) => min + ((max - min) * index) / (count - 1));
+}
+
+function buildDateTicks(min: number, max: number, count: number): number[] {
+  return Array.from(new Set(buildLinearTicks(min, max, count).map((tick) => Math.round(tick))));
+}
+
 function PriceIndexChart({ asset, history, forecast }: ChartProps) {
-  const width = 1200;
-  const height = 540;
-  const padding = { top: 48, right: 88, bottom: 64, left: 72 };
+  const width = 1280;
+  const height = 640;
+  const padding = { top: 78, right: 118, bottom: 118, left: 96 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
+  const dateFormatter = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const fullDateFormatter = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const priceFormatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
 
   const hist = [...history].sort((a, b) => a.date - b.date);
   const fc = [...forecast].sort((a, b) => a.date - b.date);
@@ -42,9 +55,11 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
   const priceValues = [...hist.map((point) => point.price), ...forecastFuture.map((point) => point.price)];
   const rawPriceMin = Math.min(...priceValues);
   const rawPriceMax = Math.max(...priceValues);
-  const pricePadding = Math.max((rawPriceMax - rawPriceMin) * 0.08, rawPriceMax * 0.01, 1);
+  const pricePadding = Math.max((rawPriceMax - rawPriceMin) * 0.1, rawPriceMax * 0.01, 1);
   const priceMin = rawPriceMin - pricePadding;
   const priceMax = rawPriceMax + pricePadding;
+  const priceTicks = buildLinearTicks(priceMin, priceMax, 5);
+  const dateTicks = buildDateTicks(xMin, xMax, 7);
 
   const xScale = (timestamp: number) =>
     padding.left + ((timestamp - xMin) / Math.max(xMax - xMin, 1)) * plotWidth;
@@ -69,74 +84,107 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
     (point) => indexScale(point.index),
   );
 
-  const firstDate = new Date(xMin * 1000).toLocaleDateString();
-  const lastDate = new Date(xMax * 1000).toLocaleDateString();
+  const plotTop = padding.top;
+  const plotBottom = height - padding.bottom;
+  const plotLeft = padding.left;
+  const plotRight = width - padding.right;
+  const historyEndX = xScale(lastHistoryDate);
+  const historyEndLabel = fullDateFormatter.format(new Date(lastHistoryDate * 1000));
+  const forecastEndLabel = fullDateFormatter.format(new Date(xMax * 1000));
 
   return (
     <div className="chart-card">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Индекс и прогноз цены ${asset}`}>
-        <text x={padding.left} y={30} className="chart-title">
+        <text x={padding.left} y={32} className="chart-title">
           Индекс и прогноз цены {asset}
         </text>
+        <text x={padding.left} y={56} className="chart-subtitle">
+          История до {historyEndLabel}; прогноз на {forecastFuture.length} дн. до {forecastEndLabel}
+        </text>
 
-        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} className="axis" />
-        <line
-          x1={padding.left}
-          y1={height - padding.bottom}
-          x2={width - padding.right}
-          y2={height - padding.bottom}
-          className="axis"
-        />
-        <line
-          x1={width - padding.right}
-          y1={padding.top}
-          x2={width - padding.right}
-          y2={height - padding.bottom}
-          className="axis muted"
-        />
+        {forecastFuture.length > 0 && (
+          <rect
+            x={historyEndX}
+            y={plotTop}
+            width={Math.max(plotRight - historyEndX, 0)}
+            height={plotHeight}
+            className="forecast-zone"
+          />
+        )}
+
+        <line x1={plotLeft} y1={plotTop} x2={plotLeft} y2={plotBottom} className="axis" />
+        <line x1={plotLeft} y1={plotBottom} x2={plotRight} y2={plotBottom} className="axis" />
+        <line x1={plotRight} y1={plotTop} x2={plotRight} y2={plotBottom} className="axis muted" />
 
         {[0, 25, 50, 75, 100].map((tick) => (
           <g key={tick}>
-            <line
-              x1={padding.left}
-              y1={indexScale(tick)}
-              x2={width - padding.right}
-              y2={indexScale(tick)}
-              className="grid"
-            />
-            <text x={padding.left - 12} y={indexScale(tick) + 4} textAnchor="end" className="tick">
+            <line x1={plotLeft} y1={indexScale(tick)} x2={plotRight} y2={indexScale(tick)} className="grid" />
+            <text x={plotLeft - 12} y={indexScale(tick) + 4} textAnchor="end" className="tick">
               {tick}
             </text>
           </g>
         ))}
 
-        {[priceMin, (priceMin + priceMax) / 2, priceMax].map((tick) => (
-          <text key={tick} x={width - padding.right + 12} y={priceScale(tick) + 4} className="tick">
-            {tick.toFixed(2)}
+        {priceTicks.map((tick) => (
+          <text key={tick} x={plotRight + 12} y={priceScale(tick) + 4} className="tick">
+            {priceFormatter.format(tick)}
           </text>
         ))}
 
-        <text x={padding.left} y={height - 24} className="tick">
-          {firstDate}
-        </text>
-        <text x={width - padding.right} y={height - 24} textAnchor="end" className="tick">
-          {lastDate}
-        </text>
+        {dateTicks.map((tick) => (
+          <g key={tick}>
+            <line x1={xScale(tick)} y1={plotBottom} x2={xScale(tick)} y2={plotBottom + 6} className="axis" />
+            <text x={xScale(tick)} y={plotBottom + 26} textAnchor="middle" className="tick tick-date">
+              {dateFormatter.format(new Date(tick * 1000))}
+            </text>
+          </g>
+        ))}
+
+        {forecastFuture.length > 0 && (
+          <g>
+            <line x1={historyEndX} y1={plotTop} x2={historyEndX} y2={plotBottom} className="forecast-divider" />
+            <text x={historyEndX + 8} y={plotTop + 18} className="forecast-label">
+              начало прогноза
+            </text>
+          </g>
+        )}
 
         {historyPriceLine && <polyline points={historyPriceLine} className="line price-history" />}
         {futurePriceLine && <polyline points={futurePriceLine} className="line price-forecast" />}
         {indexHistoryLine && <polyline points={indexHistoryLine} className="line index-history" />}
         {indexFutureLine && <polyline points={indexFutureLine} className="line index-forecast" />}
 
-        <g transform={`translate(${padding.left}, ${height - 48})`} className="legend">
-          <rect x="0" y="-10" width="20" height="3" className="legend-line price-history" />
-          <text x="28" y="-6">Цена: история</text>
-          <rect x="170" y="-10" width="20" height="3" className="legend-line price-forecast" />
-          <text x="198" y="-6">Цена: прогноз</text>
-          <rect x="350" y="-10" width="20" height="3" className="legend-line index-history" />
-          <text x="378" y="-6">Индекс: история</text>
-          <rect x="550" y="-10" width="20" height="3" className="legend-line index-forecast" />
-          <text x="578" y="-6">Индекс: прогноз</text>
+        <text x={plotLeft + plotWidth / 2} y={height - 44} textAnchor="middle" className="axis-label">
+          Дата
+        </text>
+        <text
+          x={24}
+          y={plotTop + plotHeight / 2}
+          textAnchor="middle"
+          className="axis-label"
+          transform={`rotate(-90 24 ${plotTop + plotHeight / 2})`}
+        >
+          Индекс новостей, 0–100
+        </text>
+        <text
+          x={width - 28}
+          y={plotTop + plotHeight / 2}
+          textAnchor="middle"
+          className="axis-label"
+          transform={`rotate(90 ${width - 28} ${plotTop + plotHeight / 2})`}
+        >
+          Цена
+        </text>
+
+        <g transform={`translate(${padding.left}, ${height - 18})`} className="legend">
+          <rect x="0" y="-10" width="22" height="3" className="legend-line price-history" />
+          <text x="30" y="-6">Цена: история</text>
+          <rect x="185" y="-10" width="22" height="3" className="legend-line price-forecast" />
+          <text x="215" y="-6">Цена: прогноз</text>
+          <rect x="390" y="-10" width="22" height="3" className="legend-line index-history" />
+          <text x="420" y="-6">Индекс: история</text>
+          <rect x="610" y="-10" width="22" height="3" className="legend-line index-forecast" />
+          <text x="640" y="-6">Индекс: прогноз</text>
         </g>
       </svg>
     </div>

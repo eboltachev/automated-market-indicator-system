@@ -73,6 +73,36 @@ textarea {
   fill: #172033;
 }
 
+.chart-subtitle {
+  font-size: 14px;
+  fill: #5b6475;
+}
+
+.axis-label {
+  font-size: 15px;
+  font-weight: 600;
+  fill: #344054;
+}
+
+.tick-date {
+  font-size: 12px;
+}
+
+.forecast-zone {
+  fill: rgba(255, 127, 14, 0.08);
+}
+
+.forecast-divider {
+  stroke: #98a2b3;
+  stroke-width: 1.2;
+  stroke-dasharray: 5 5;
+}
+
+.forecast-label {
+  font-size: 12px;
+  fill: #667085;
+}
+
 .axis {
   stroke: #5b6475;
   stroke-width: 1.2;
