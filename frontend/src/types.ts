@@ -12,7 +12,14 @@ export type ForecastPoint = {
   fall: number;
 };
 
+export type ResultMeta = {
+  forecast_start_date?: number;
+  forecast_end_date?: number;
+  actual_history_end_date?: number;
+};
+
 export type Result = {
   history: HistoryPoint[];
   forecast: ForecastPoint[];
+  meta?: ResultMeta;
 };

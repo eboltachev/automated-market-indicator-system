@@ -11,6 +11,7 @@ type ChartProps = {
   asset: string;
   history: HistoryPoint[];
   forecast: ForecastPoint[];
+  meta?: Result['meta'];
 };
 
 const initialRows: NewsRow[] = [{ date: '', text: '' }];
@@ -29,7 +30,7 @@ function buildDateTicks(min: number, max: number, count: number): number[] {
   return Array.from(new Set(buildLinearTicks(min, max, count).map((tick) => Math.round(tick))));
 }
 
-function PriceIndexChart({ asset, history, forecast }: ChartProps) {
+function PriceIndexChart({ asset, history, forecast, meta }: ChartProps) {
   const width = 1280;
   const height = 640;
   const padding = { top: 78, right: 118, bottom: 118, left: 96 };
@@ -41,18 +42,31 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
 
   const hist = [...history].sort((a, b) => a.date - b.date);
   const fc = [...forecast].sort((a, b) => a.date - b.date);
-  const lastHistoryDate = hist.at(-1)?.date ?? 0;
-  const forecastHistory = fc.filter((point) => point.date <= lastHistoryDate);
-  const forecastFuture = fc.filter((point) => point.date > lastHistoryDate);
-  const timeline = [...hist, ...forecastFuture];
 
-  if (!hist.length || !fc.length || !timeline.length) {
+  if (!hist.length || !fc.length) {
+    return <div className="empty-chart">Нет данных для построения графика</div>;
+  }
+
+  const fallbackForecastStartDate = hist.at(-1)?.date ?? fc.at(-1)?.date ?? 0;
+  const forecastStartDate = meta?.forecast_start_date ?? fallbackForecastStartDate;
+  const forecastHistory = fc.filter((point) => point.date <= forecastStartDate);
+  const forecastFuture = fc.filter((point) => point.date > forecastStartDate);
+  const forecastAnchor =
+    [...forecastHistory].reverse().find((point) => point.date <= forecastStartDate) ??
+    [...fc].reverse().find((point) => point.date <= forecastStartDate) ??
+    hist.find((point) => point.date >= forecastStartDate) ??
+    hist.at(-1);
+  const forecastPricePoints = forecastAnchor ? [forecastAnchor, ...forecastFuture] : forecastFuture;
+  const indexFuturePoints = forecastAnchor ? [forecastAnchor, ...forecastFuture] : forecastFuture;
+  const timeline = [...hist, ...forecastPricePoints];
+
+  if (!timeline.length) {
     return <div className="empty-chart">Нет данных для построения графика</div>;
   }
 
   const xMin = Math.min(...timeline.map((point) => point.date));
   const xMax = Math.max(...timeline.map((point) => point.date));
-  const priceValues = [...hist.map((point) => point.price), ...forecastFuture.map((point) => point.price)];
+  const priceValues = [...hist.map((point) => point.price), ...forecastPricePoints.map((point) => point.price)];
   const rawPriceMin = Math.min(...priceValues);
   const rawPriceMax = Math.max(...priceValues);
   const pricePadding = Math.max((rawPriceMax - rawPriceMin) * 0.1, rawPriceMax * 0.01, 1);
@@ -69,7 +83,7 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
 
   const historyPriceLine = buildPolyline(hist, (point) => xScale(point.date), (point) => priceScale(point.price));
   const futurePriceLine = buildPolyline(
-    hist.at(-1) ? [hist.at(-1)!, ...forecastFuture] : forecastFuture,
+    forecastPricePoints,
     (point) => xScale(point.date),
     (point) => priceScale(point.price),
   );
@@ -79,7 +93,7 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
     (point) => indexScale(point.index),
   );
   const indexFutureLine = buildPolyline(
-    forecastHistory.at(-1) ? [forecastHistory.at(-1)!, ...forecastFuture] : forecastFuture,
+    indexFuturePoints,
     (point) => xScale(point.date),
     (point) => indexScale(point.index),
   );
@@ -88,9 +102,12 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
   const plotBottom = height - padding.bottom;
   const plotLeft = padding.left;
   const plotRight = width - padding.right;
-  const historyEndX = xScale(lastHistoryDate);
-  const historyEndLabel = fullDateFormatter.format(new Date(lastHistoryDate * 1000));
-  const forecastEndLabel = fullDateFormatter.format(new Date(xMax * 1000));
+  const forecastStartX = xScale(forecastStartDate);
+  const actualHistoryEndDate = meta?.actual_history_end_date ?? hist.at(-1)?.date ?? forecastStartDate;
+  const forecastEndDate = meta?.forecast_end_date ?? forecastFuture.at(-1)?.date ?? xMax;
+  const historyEndLabel = fullDateFormatter.format(new Date(actualHistoryEndDate * 1000));
+  const forecastStartLabel = fullDateFormatter.format(new Date(forecastStartDate * 1000));
+  const forecastEndLabel = fullDateFormatter.format(new Date(forecastEndDate * 1000));
 
   return (
     <div className="chart-card">
@@ -99,14 +116,14 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
           Индекс и прогноз цены {asset}
         </text>
         <text x={padding.left} y={56} className="chart-subtitle">
-          История до {historyEndLabel}; прогноз на {forecastFuture.length} дн. до {forecastEndLabel}
+          История до {historyEndLabel}; прогноз с {forecastStartLabel} на {forecastFuture.length} дн. до {forecastEndLabel}
         </text>
 
         {forecastFuture.length > 0 && (
           <rect
-            x={historyEndX}
+            x={forecastStartX}
             y={plotTop}
-            width={Math.max(plotRight - historyEndX, 0)}
+            width={Math.max(plotRight - forecastStartX, 0)}
             height={plotHeight}
             className="forecast-zone"
           />
@@ -142,8 +159,8 @@ function PriceIndexChart({ asset, history, forecast }: ChartProps) {
 
         {forecastFuture.length > 0 && (
           <g>
-            <line x1={historyEndX} y1={plotTop} x2={historyEndX} y2={plotBottom} className="forecast-divider" />
-            <text x={historyEndX + 8} y={plotTop + 18} className="forecast-label">
+            <line x1={forecastStartX} y1={plotTop} x2={forecastStartX} y2={plotBottom} className="forecast-divider" />
+            <text x={forecastStartX + 8} y={plotTop + 18} className="forecast-label">
               начало прогноза
             </text>
           </g>
@@ -286,7 +303,7 @@ export default function App() {
       </div>
 
       {data ? (
-        <PriceIndexChart asset={asset} history={data.history} forecast={data.forecast} />
+        <PriceIndexChart asset={asset} history={data.history} forecast={data.forecast} meta={data.meta} />
       ) : (
         <div className="placeholder">Загрузите Excel-файл или введите новости вручную, чтобы построить график.</div>
       )}

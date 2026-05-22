@@ -130,30 +130,49 @@ textarea {
   stroke-linecap: round;
 }
 
-.price-history,
+.price-history {
+  stroke: #1f77b4;
+}
+
+.price-forecast {
+  stroke: #ff7f0e;
+}
+
+.index-history {
+  stroke: #2ca02c;
+  stroke-dasharray: 8 5;
+}
+
+.index-forecast {
+  stroke: #d62728;
+  stroke-dasharray: 8 5;
+}
+
+.line.price-history,
+.line.price-forecast,
+.line.index-history,
+.line.index-forecast {
+  fill: none;
+}
+
 .legend-line.price-history {
   stroke: #1f77b4;
   fill: #1f77b4;
 }
 
-.price-forecast,
 .legend-line.price-forecast {
   stroke: #ff7f0e;
   fill: #ff7f0e;
 }
 
-.index-history,
 .legend-line.index-history {
   stroke: #2ca02c;
   fill: #2ca02c;
-  stroke-dasharray: 8 5;
 }
 
-.index-forecast,
 .legend-line.index-forecast {
   stroke: #d62728;
   fill: #d62728;
-  stroke-dasharray: 8 5;
 }
 
 .modal-backdrop {

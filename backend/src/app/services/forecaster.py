@@ -163,24 +163,33 @@ class AsyncNewsPriceForecaster:
             raise ValueError("news должен быть списком словарей")
 
         news_bounds = self._news_date_bounds(news)
-        await self._ensure_asset_loaded(asset, news_bounds)
+        await self._ensure_asset_loaded(asset, news_bounds, period=period)
         async with self._price_lock:
             market_df = self._price_cache[asset].copy()
         if market_df.empty:
             raise MarketDataUnavailableError(f"Нет рыночных данных для asset={asset}")
 
         news_df = await self._classify_news(news)
-        history_df = self._select_history(market_df, news_df, news_bounds=news_bounds)
-        if history_df.empty:
+        model_history_df = self._select_history(market_df, news_df, news_bounds=news_bounds)
+        if model_history_df.empty:
             raise MarketDataUnavailableError(f"Нет исторических цен для asset={asset}")
-        aligned_news = self._align_news_to_market_dates(news_df, history_df.index)
-        daily_counts = self._prepare_daily_counts(aligned_news, history_df.index)
+
+        forecast_start = pd.Timestamp(model_history_df.index[-1]).normalize()
+        forecast_end = forecast_start + pd.Timedelta(days=period)
+        visible_history_df = self._select_visible_history(
+            market_df=market_df,
+            model_history_df=model_history_df,
+            forecast_end=forecast_end,
+        )
+
+        aligned_news = self._align_news_to_market_dates(news_df, model_history_df.index)
+        daily_counts = self._prepare_daily_counts(aligned_news, model_history_df.index)
         index_df = self._compute_index(daily_counts)
         signals = self._compute_signal(index_df["index"])
-        mu, sigma, beta = self._estimate_price_params(history_df["log_return"], signals)
-        history_rows = self._build_history_rows(history_df)
+        mu, sigma, beta = self._estimate_price_params(model_history_df["log_return"], signals)
+        history_rows = self._build_history_rows(visible_history_df)
         forecast_rows = self._build_forecast_rows(
-            history_df=history_df,
+            history_df=model_history_df,
             index_df=index_df,
             daily_counts=daily_counts,
             period=period,
@@ -191,6 +200,11 @@ class AsyncNewsPriceForecaster:
         return {
             "history": history_rows,
             "forecast": forecast_rows,
+            "meta": {
+                "forecast_start_date": self._timestamp(forecast_start),
+                "forecast_end_date": self._timestamp(forecast_end),
+                "actual_history_end_date": self._timestamp(visible_history_df.index[-1]),
+            },
         }
 
     async def _load_model(self) -> None:
@@ -269,21 +283,30 @@ class AsyncNewsPriceForecaster:
             return None
         return min(news_dates), max(news_dates)
 
-    def _required_market_range(self, news_bounds: tuple[date, date] | None) -> tuple[date, date] | None:
+    def _required_market_range(
+        self,
+        news_bounds: tuple[date, date] | None,
+        period: int = 0,
+    ) -> tuple[date, date] | None:
         if news_bounds is None:
             return None
         min_news_date, max_news_date = news_bounds
+        forecast_days = max(int(period), 0)
         start = min_news_date - timedelta(days=self.config.index_window + 3)
         # yfinance treats `end` as exclusive; MOEX tolerates the extra day as well.
-        end = max_news_date + timedelta(days=1)
+        # Загружаем также прогнозный интервал: если на нем уже есть фактические
+        # биржевые цены, frontend покажет их как продолжение исторической линии,
+        # не сдвигая и не обрезая прогнозную кривую.
+        end = max_news_date + timedelta(days=forecast_days + 1)
         return start, end
 
     async def _ensure_asset_loaded(
         self,
         asset: str,
         news_bounds: tuple[date, date] | None,
+        period: int = 0,
     ) -> None:
-        required_range = self._required_market_range(news_bounds)
+        required_range = self._required_market_range(news_bounds, period=period)
         async with self._price_lock:
             cached = self._price_cache.get(asset)
 
@@ -464,6 +487,25 @@ class AsyncNewsPriceForecaster:
             return history
         history = market_df.tail(min(len(market_df), 60)).copy()
         return history.dropna(subset=["price"])
+
+    def _select_visible_history(
+        self,
+        market_df: pd.DataFrame,
+        model_history_df: pd.DataFrame,
+        forecast_end: pd.Timestamp,
+    ) -> pd.DataFrame:
+        if model_history_df.empty:
+            return model_history_df.copy()
+        start = pd.Timestamp(model_history_df.index.min()).normalize()
+        forecast_end = pd.Timestamp(forecast_end).normalize()
+        visible_market_history = market_df.loc[
+            (market_df.index >= start) & (market_df.index <= forecast_end)
+        ].copy()
+        visible_market_history = visible_market_history.dropna(subset=["price"])
+        if visible_market_history.empty:
+            return model_history_df.copy().sort_index()
+        visible = self._merge_market_history(visible_market_history, model_history_df)
+        return visible.loc[visible.index <= forecast_end].sort_index()
 
     def _align_news_to_market_dates(
         self,
