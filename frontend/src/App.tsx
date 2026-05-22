@@ -28,17 +28,12 @@ export default function App() {
 
   const traces = useMemo(() => {
     if (!data) return [];
-    const toUnix = (value: number | string) => {
-      if (typeof value === 'number') return value;
-      const parsed = Date.parse(value);
-      return Number.isNaN(parsed) ? 0 : Math.floor(parsed / 1000);
-    };
-    const d = (x: number | string) => new Date(toUnix(x) * 1000);
-    const hist = [...data.history].sort((a, b) => toUnix(a.date) - toUnix(b.date));
-    const fc = [...data.forecast].sort((a, b) => toUnix(a.date) - toUnix(b.date));
-    const last = toUnix(hist.at(-1)?.date || 0);
-    const fh = fc.filter((x) => toUnix(x.date) <= last);
-    const ff = fc.filter((x) => toUnix(x.date) > last);
+    const hist = [...data.history].sort((a, b) => a.date - b.date);
+    const fc = [...data.forecast].sort((a, b) => a.date - b.date);
+    const last = hist.at(-1)?.date || 0;
+    const fh = fc.filter((x) => x.date <= last);
+    const ff = fc.filter((x) => x.date > last);
+    const d = (x: number) => new Date(x * 1000);
 
     return [
       { x: fh.map((x) => d(x.date)), y: fh.map((x) => x.index), name: 'Индекс: история', mode: 'lines+markers', line: { color: 'blue', dash: 'dash' } },
