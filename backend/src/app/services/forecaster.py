@@ -43,10 +43,6 @@ class NewsPriceForecasterConfig:
     labels: dict[int, str] = field(default_factory=lambda: {0: "increase", 1: "stable", 2: "fall"})
 
 class AsyncNewsPriceForecaster:
-    _ASSET_ALIASES = {
-        "LKOH": "LKOH.ME",
-        "IMOEX": "IMOEX.ME",
-    }
     def __init__(self, config: NewsPriceForecasterConfig | None = None, device: str | torch.device | None = None) -> None:
         self.config = config or NewsPriceForecasterConfig(); self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu")); self.tokenizer=None; self.model=None; self._stemmer=SnowballStemmer("russian"); self._price_cache={}; self._model_lock=asyncio.Lock(); self._price_lock=asyncio.Lock()
     @classmethod
@@ -114,9 +110,7 @@ class AsyncNewsPriceForecaster:
     @staticmethod
     def _find_close_column(df): return "Close" if "Close" in df.columns else list(df.columns)[0]
     @staticmethod
-    def _normalize_asset(asset):
-        normalized = asset.strip().upper()
-        return AsyncNewsPriceForecaster._ASSET_ALIASES.get(normalized, normalized)
+    def _normalize_asset(asset): return asset.strip().upper()
     @staticmethod
     def _to_date(v): return v.date() if isinstance(v,datetime) else (v if isinstance(v,date) else pd.to_datetime(v).date())
     @staticmethod
