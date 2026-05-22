@@ -222,7 +222,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
 
-  const canPredict = useMemo(() => assets.length > 0 && asset.trim().length > 0 && period > 0, [asset, assets, period]);
+  const canPredict = useMemo(() => asset.trim().length > 0 && Number.isFinite(period) && period > 0, [asset, period]);
+  const canOpenPredictionModal = assets.length > 0;
 
   const loadAssets = useCallback(async () => {
     const response = await getAssets();
@@ -254,6 +255,11 @@ export default function App() {
   };
 
   const runManualPrediction = async () => {
+    if (!canPredict) {
+      setStatus('Выберите актив и укажите количество дней прогноза');
+      return;
+    }
+
     const news = rows.filter((row) => row.date && row.text.trim());
     if (!news.length) {
       setStatus('Нет валидных новостей');
@@ -274,6 +280,10 @@ export default function App() {
 
   const runFilePrediction = async () => {
     if (!file) return;
+    if (!canPredict) {
+      setStatus('Выберите актив и укажите количество дней прогноза');
+      return;
+    }
     setLoading(true);
     setStatus('');
     const form = new FormData();
@@ -308,28 +318,8 @@ export default function App() {
   return (
     <div className="page">
       <div className="top">
-        <select
-          className="asset-select"
-          value={asset}
-          onChange={(event) => setAsset(event.target.value)}
-          disabled={!assets.length}
-          aria-label="Актив"
-        >
-          {assets.length ? (
-            assets.map((item) => <option key={item} value={item}>{item}</option>)
-          ) : (
-            <option value="">Нет загруженных активов</option>
-          )}
-        </select>
-        <input
-          type="number"
-          min={1}
-          value={period}
-          onChange={(event) => setPeriod(Number(event.target.value))}
-          placeholder="Период"
-        />
-        <button disabled={!canPredict} onClick={() => setFileModal(true)}>Загрузить файл</button>
-        <button disabled={!canPredict} onClick={() => setManual(true)}>Ввести данные</button>
+        <button disabled={!canOpenPredictionModal} onClick={() => setFileModal(true)}>Загрузить данные</button>
+        <button disabled={!canOpenPredictionModal} onClick={() => setManual(true)}>Ввести данные</button>
         <button disabled={updating} onClick={runUpdate}>
           {updating ? 'Выполняется обновление' : 'Получить обновления'}
         </button>
@@ -362,6 +352,16 @@ export default function App() {
               </select>
             </label>
             <label className="modal-field">
+              <span>Дней прогноза</span>
+              <input
+                type="number"
+                min={1}
+                value={period}
+                onChange={(event) => setPeriod(Number(event.target.value))}
+                placeholder="Количество дней"
+              />
+            </label>
+            <label className="modal-field">
               <span>Файл Excel</span>
               <input type="file" accept=".xls,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
             </label>
@@ -377,6 +377,33 @@ export default function App() {
         <div className="modal-backdrop">
           <div className="modal wide">
             <h2>Ввод новостей</h2>
+            <div className="modal-grid">
+              <label className="modal-field">
+                <span>Актив</span>
+                <select
+                  value={asset}
+                  onChange={(event) => setAsset(event.target.value)}
+                  disabled={!assets.length}
+                  aria-label="Актив для ручного ввода"
+                >
+                  {assets.length ? (
+                    assets.map((item) => <option key={item} value={item}>{item}</option>)
+                  ) : (
+                    <option value="">Нет загруженных активов</option>
+                  )}
+                </select>
+              </label>
+              <label className="modal-field">
+                <span>Дней прогноза</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={period}
+                  onChange={(event) => setPeriod(Number(event.target.value))}
+                  placeholder="Количество дней"
+                />
+              </label>
+            </div>
             {rows.map((row, index) => (
               <div className="news-row" key={index}>
                 <input type="date" value={row.date} onChange={(event) => setRow(index, { date: event.target.value })} />
@@ -385,7 +412,7 @@ export default function App() {
             ))}
             <button onClick={() => setRows([...rows, { date: '', text: '' }])}>+</button>
             <div className="modal-actions">
-              <button disabled={loading} onClick={runManualPrediction}>Ок</button>
+              <button disabled={!canPredict || loading} onClick={runManualPrediction}>Ок</button>
               <button onClick={() => setManual(false)}>Отмена</button>
             </div>
           </div>

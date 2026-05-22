@@ -221,6 +221,13 @@ textarea {
   font-weight: 600;
 }
 
+.modal-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -238,4 +245,16 @@ textarea {
 .news-row textarea {
   min-height: 72px;
   resize: vertical;
+}
+
+@media (max-width: 640px) {
+  .top {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .modal-grid,
+  .news-row {
+    grid-template-columns: 1fr;
+  }
 }
